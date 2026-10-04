@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code Viewer</title>
+<style>
+  :root {
+    --bg: #faf9f5; --panel: #f0eee6; --text: #1f1e1d; --muted: #75726a; --border: #e0ddd2;
+    --user: #e9e6da; --assistant: #ffffff; --accent: #c15f3c; --code-bg: #2b2a28; --code-fg: #ece9df;
+    --tool: #eef2f6; --think: #f5f0e0; --err: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1f1e1d; --panel: #262523; --text: #ece9df; --muted: #9b978c; --border: #3a3835;
+      --user: #302e2b; --assistant: #262523; --accent: #e08a65; --code-bg: #151413; --code-fg: #ece9df;
+      --tool: #262c33; --think: #33301f; --err: #f2a29c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1f1e1d; --panel: #262523; --text: #ece9df; --muted: #9b978c; --border: #3a3835;
+    --user: #302e2b; --assistant: #262523; --accent: #e08a65; --code-bg: #151413; --code-fg: #ece9df;
+    --tool: #262c33; --think: #33301f; --err: #f2a29c;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; }
+  button, input { font: inherit; color: inherit; }
+  button { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  #sidebar { width: 340px; min-width: 260px; border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; height: 100%; }
+  #sidebar header { padding: 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+  #sidebar h1 { font-size: 15px; margin: 0; display: flex; justify-content: space-between; align-items: center; }
+  #sidebar input[type=search] { width: 100%; padding: 6px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+  #list { overflow-y: auto; flex: 1; }
+  .proj { padding: 8px 12px; font-weight: 600; font-size: 12px; color: var(--muted); background: var(--panel); position: sticky; top: 0; border-bottom: 1px solid var(--border); word-break: break-all; }
+  .sess { padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .sess:hover { background: var(--bg); }
+  .sess.active { background: var(--bg); box-shadow: inset 3px 0 var(--accent); }
+  .sess .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .sess .m { font-size: 12px; color: var(--muted); }
+  main { flex: 1; height: 100%; overflow-y: auto; min-width: 0; }
+  #empty { max-width: 520px; margin: 14vh auto; padding: 0 20px; text-align: center; color: var(--muted); }
+  #empty h2 { color: var(--text); }
+  #empty code { background: var(--panel); padding: 1px 5px; border-radius: 4px; }
+  #bar { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  #bar .info { flex: 1; min-width: 200px; }
+  #bar .info b { display: block; }
+  #bar .info span { color: var(--muted); font-size: 12px; word-break: break-all; }
+  #bar label { font-size: 12px; color: var(--muted); display: flex; gap: 4px; align-items: center; cursor: pointer; }
+  #msgs { max-width: 860px; margin: 0 auto; padding: 16px 20px 80px; }
+  .msg { margin: 14px 0; border-radius: 10px; padding: 10px 14px; border: 1px solid var(--border); }
+  .msg.user { background: var(--user); }
+  .msg.assistant { background: var(--assistant); }
+  .msg .who { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .msg.user .who b { color: var(--accent); }
+  .msg.sidechain { margin-left: 28px; opacity: .85; }
+  .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+  .md p { margin: .6em 0; white-space: pre-wrap; }
+  .md h1, .md h2, .md h3, .md h4 { margin: 1em 0 .4em; line-height: 1.25; }
+  .md h1 { font-size: 1.3em; } .md h2 { font-size: 1.15em; } .md h3, .md h4 { font-size: 1.05em; }
+  .md ul, .md ol { margin: .5em 0; padding-left: 1.5em; }
+  .md blockquote { margin: .6em 0; padding-left: 12px; border-left: 3px solid var(--border); color: var(--muted); }
+  .md a { color: var(--accent); }
+  .md code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre { background: var(--code-bg); color: var(--code-fg); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: .6em 0; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre code { background: none; padding: 0; color: inherit; }
+  details { border-radius: 8px; margin: 8px 0; border: 1px solid var(--border); }
+  details > summary { cursor: pointer; padding: 6px 10px; font-size: 12.5px; color: var(--muted); list-style: none; }
+  details > summary::before { content: "▸ "; } details[open] > summary::before { content: "▾ "; }
+  details .body { padding: 0 10px 10px; }
+  details.tool { background: var(--tool); } details.think { background: var(--think); }
+  details.result.error > summary { color: var(--err); }
+  details pre { max-height: 420px; overflow: auto; }
+  .tname { font-weight: 600; color: var(--text); font-family: ui-monospace, Menlo, monospace; }
+  .sys { text-align: center; color: var(--muted); font-size: 12px; margin: 14px 0; }
+  .sys.summary { background: var(--panel); border-radius: 8px; padding: 8px; }
+  mark { background: #ffe58a; color: #222; border-radius: 2px; }
+  .hide-tools details.tool, .hide-tools details.result { display: none; }
+  .hide-think details.think { display: none; }
+  @media (max-width: 720px) { body { flex-direction: column; } #sidebar { width: 100%; height: 40%; } }
+</style>
+</head>
+<body>
+<aside id="sidebar">
+  <header>
+    <h1>Claude Code Viewer <button id="theme" title="Toggle theme">◐</button></h1>
+    <div style="display:flex; gap:6px"><button id="reload">Reload</button></div>
+    <input type="search" id="q" placeholder="Search sessions & messages…">
+  </header>
+  <div id="list"></div>
+</aside>
+<main id="main">
+  <div id="empty">
+    <h2>No sessions found</h2>
+    <p>Looking in <code>~/.claude/projects</code>. Start the server with <code>--dir &lt;path&gt;</code> to use another location.</p>
+  </div>
+  <div id="view" hidden>
+    <div id="bar">
+      <div class="info"><b id="vtitle"></b><span id="vmeta"></span></div>
+      <label><input type="checkbox" id="showTools" checked> tool calls</label>
+      <label><input type="checkbox" id="showThink" checked> thinking</label>
+      <button id="expand">Expand all</button>
+      <button id="collapse">Collapse all</button>
+    </div>
+    <div id="msgs"></div>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let sessions = [];   // {id, project, name, file, title, ts, count, entries, text}
+let activeId = null;
+
+/* ---------- loading ---------- */
+const textOf = c => typeof c === 'string' ? c : Array.isArray(c) ? c.filter(b => b.type === 'text').map(b => b.text).join('\n') : '';
+const isNoise = t => /^<(command-|local-command|system-reminder|ide_)/.test(t.trim()) || t.startsWith('Caveat:');
+let matchIds = null;   // ids matching the search query (null = no filter)
+async function loadList() {
+  sessions = await (await fetch('/api/sessions')).json();
+  renderList();
+  if (!sessions.length) { $('#empty').hidden = false; $('#view').hidden = true; }
+  else if (!activeId) openSession(sessions[0].id);
+}
+
+/* ---------- sidebar ---------- */
+function renderList() {
+  const list = $('#list');
+  let html = '', last = null;
+  for (const s of sessions) {
+    if (matchIds && !matchIds.has(s.id)) continue;
+    if (s.project !== last) { html += `<div class="proj">${esc(prettyProject(s))}</div>`; last = s.project; }
+    html += `<div class="sess ${s.id === activeId ? 'active' : ''}" data-id="${esc(s.id)}">
+      <div class="t">${esc(s.title)}</div>
+      <div class="m">${s.ts ? new Date(s.ts).toLocaleString() : ''} · ${s.count} msgs</div></div>`;
+  }
+  list.innerHTML = html || '<div class="sys">No sessions</div>';
+}
+function prettyProject(s) { return s.cwd || s.project.replace(/^-/, '/').replace(/-/g, '/'); }
+$('#list').addEventListener('click', e => {
+  const el = e.target.closest('.sess'); if (el) openSession(el.dataset.id);
+});
+let qTimer;
+$('#q').addEventListener('input', () => {
+  clearTimeout(qTimer);
+  qTimer = setTimeout(async () => {
+    const q = $('#q').value.trim();
+    matchIds = q ? new Set(await (await fetch('/api/search?q=' + encodeURIComponent(q))).json()) : null;
+    renderList(); if (activeId) renderMessages();
+  }, 200);
+});
+
+/* ---------- markdown (minimal) ---------- */
+function inline(s) {
+  s = esc(s);
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  s = s.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return s;
+}
+function md(src) {
+  const out = [];
+  const parts = String(src).split(/```([^\n]*)\n([\s\S]*?)(?:```|$)/g);
+  for (let i = 0; i < parts.length; i += 3) {
+    out.push(block(parts[i]));
+    if (i + 2 < parts.length) out.push(`<pre><code>${esc(parts[i + 2])}</code></pre>`);
+  }
+  return `<div class="md">${out.join('')}</div>`;
+}
+function block(t) {
+  const lines = t.split('\n'), out = []; let list = null, para = [];
+  const flushP = () => { if (para.length) { out.push(`<p>${inline(para.join('\n'))}</p>`); para = []; } };
+  const flushL = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const l of lines) {
+    let m;
+    if ((m = l.match(/^(#{1,4})\s+(.*)/))) { flushP(); flushL(); out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); }
+    else if ((m = l.match(/^\s*([-*]|\d+\.)\s+(.*)/))) {
+      flushP(); const tag = /\d/.test(m[1]) ? 'ol' : 'ul';
+      if (list !== tag) { flushL(); out.push(`<${tag}>`); list = tag; }
+      out.push(`<li>${inline(m[2])}</li>`);
+    }
+    else if ((m = l.match(/^>\s?(.*)/))) { flushP(); flushL(); out.push(`<blockquote>${inline(m[1])}</blockquote>`); }
+    else if (!l.trim()) { flushP(); flushL(); }
+    else { flushL(); para.push(l); }
+  }
+  flushP(); flushL();
+  return out.join('');
+}
+
+/* ---------- message rendering ---------- */
+function highlight(html, q) {
+  if (!q) return html;
+  const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+  return html.replace(/>([^<]+)</g, (m, t) => '>' + t.replace(re, '<mark>$1</mark>') + '<');
+}
+function resultText(c) {
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) return c.map(b => b.type === 'text' ? b.text : `[${b.type}]`).join('\n');
+  return JSON.stringify(c, null, 2);
+}
+function toolSummary(b) {
+  const i = b.input || {};
+  const hint = i.command || i.file_path || i.path || i.pattern || i.url || i.description || i.query || '';
+  return `<span class="tname">${esc(b.name)}</span> ${esc(String(hint).slice(0, 110))}`;
+}
+function renderBlock(b) {
+  if (typeof b === 'string') return md(b);
+  switch (b.type) {
+    case 'text': return b.text?.trim() ? md(b.text) : '';
+    case 'thinking': return b.thinking?.trim() ? `<details class="think"><summary>Thinking</summary><div class="body">${md(b.thinking)}</div></details>` : '';
+    case 'tool_use': return `<details class="tool"><summary>${toolSummary(b)}</summary><div class="body"><pre><code>${esc(JSON.stringify(b.input, null, 2))}</code></pre></div></details>`;
+    case 'tool_result': {
+      const t = resultText(b.content);
+      return `<details class="result tool ${b.is_error ? 'error' : ''}"><summary>${b.is_error ? 'Error result' : 'Result'} · ${t.length.toLocaleString()} chars</summary><div class="body"><pre><code>${esc(t.slice(0, 50000))}${t.length > 50000 ? '\n… truncated' : ''}</code></pre></div></details>`;
+    }
+    case 'image': return '<div class="sys">[image]</div>';
+    default: return '';
+  }
+}
+let entries = [];
+function renderMessages() {
+  const q = $('#q').value.trim();
+  const out = [];
+  for (const e of entries) {
+    if (e.type === 'summary') { out.push(`<div class="sys summary">Summary: ${esc(e.summary)}</div>`); continue; }
+    if (!e.message || e.isMeta) continue;
+    const role = e.message.role || e.type;
+    const content = e.message.content;
+    const blocks = typeof content === 'string' ? [content] : (content || []);
+    if (typeof content === 'string' && isNoise(content)) continue;
+    const body = blocks.map(renderBlock).join('');
+    if (!body.trim()) continue;
+    const onlyResults = role === 'user' && Array.isArray(content) && content.every(b => b.type === 'tool_result');
+    const time = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '';
+    if (onlyResults) { out.push(`<div class="msg-res ${e.isSidechain ? 'sidechain' : ''}">${body}</div>`); continue; }
+    const label = role === 'user' ? 'You' : 'Claude';
+    out.push(`<div class="msg ${role} ${e.isSidechain ? 'sidechain' : ''}"><div class="who"><b>${label}${e.isSidechain ? ' (subagent)' : ''}</b><span>${time}</span></div>${body}</div>`);
+  }
+  $('#msgs').innerHTML = highlight(out.join(''), q);
+  applyToggles();
+}
+async function openSession(id) {
+  activeId = id;
+  entries = await (await fetch('/api/session?id=' + encodeURIComponent(id))).json();
+  const s = sessions.find(x => x.id === id);
+  $('#empty').hidden = true; $('#view').hidden = false;
+  $('#vtitle').textContent = s.title;
+  $('#vmeta').textContent = [s.cwd, s.model, s.ts && new Date(s.ts).toLocaleString(), s.count + ' messages'].filter(Boolean).join(' · ');
+  renderList(); renderMessages(); $('#main').scrollTop = 0;
+}
+function applyToggles() {
+  $('#msgs').classList.toggle('hide-tools', !$('#showTools').checked);
+  $('#msgs').classList.toggle('hide-think', !$('#showThink').checked);
+}
+$('#showTools').onchange = $('#showThink').onchange = applyToggles;
+$('#expand').onclick = () => document.querySelectorAll('#msgs details').forEach(d => d.open = true);
+$('#collapse').onclick = () => document.querySelectorAll('#msgs details').forEach(d => d.open = false);
+
+$('#reload').onclick = loadList;
+loadList();
+
+$('#theme').onclick = () => {
+  const r = document.documentElement;
+  const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  r.dataset.theme = dark ? 'light' : 'dark';
+};
+</script>
+</body>
+</html>

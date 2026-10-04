@@ -1,0 +1,9 @@
+{
+  "name": "claude-code-viewer",
+  "version": "1.0.0",
+  "description": "Local web app for browsing Claude Code chat sessions",
+  "bin": { "claude-code-viewer": "server.js" },
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=16" },
+  "license": "MIT"
+}
